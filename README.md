@@ -4,7 +4,7 @@
 
 
   * [Getting started.](#getting-started)
-  * [Writing your first code](#writing-your-first-comments-bot)
+  * [Writing your first code](#writing-your-first-code)
 
 ## Getting started.
 install from PyPi
