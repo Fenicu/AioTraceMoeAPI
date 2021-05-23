@@ -7,7 +7,7 @@ from aiotracemoeapi.types import AniList
 
 API_TOKEN = 'BOT TOKEN HERE'
 
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
 dp = Dispatcher(bot)
 
 trace_bot = TraceMoe()
