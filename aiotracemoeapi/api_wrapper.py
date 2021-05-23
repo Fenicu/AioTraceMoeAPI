@@ -37,6 +37,32 @@ class TraceMoe:
                      anilist_info: Optional[int] = 1,
                      is_url: bool = False
                      ) -> AnimeResponse:
+        """
+        Use this method to search anime.
+
+        Source: https://soruly.github.io/trace.moe-api/#/docs?id=search
+
+        :param path: path, url or BytesIO to send
+        :type path: :obj:`typing.Union[str, io.BytesIO]`
+
+        :param ani_list_id: You can search for a matching scene only in a particular anime by Anilist ID.
+            This is useful when you are certain about the anime name but cannot remember which episode.
+        :type ani_list_id: :obj:`typing.Optional[int]`
+
+        :param cut_borders: trace.moe can detect black borders automatically and cut away unnecessary
+            parts of the images that would affect search results accuracy.
+            This is useful if your image is a screencap from a smartphone or iPad that contains black bars.
+        :type cut_borders: :obj:`typing.Optional[int]`
+
+        :param anilist_info: Asking for Anilist info would slow down your request because it takes additional query to Anilist,
+            and may fail depending on their availability.
+        :type anilist_info: :obj:`typing.Optional[int]`
+
+        :param is_url: Is path a link to an image.
+        :type is_url: :obj:`typing.Optional[bool]`
+
+        :rtype: :obj:`types.AnimeResponse`
+        """
         url = urljoin(self.api_url, "search")
         if is_url:
             if not isinstance(path, str):
