@@ -24,6 +24,10 @@ class AniList(dict):
         super(AniList, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
+    @property
+    def mal_url(self) -> str:
+        return f"https://myanimelist.net/anime/{self.id_mal}"
+
 
 class AnimeSearch(dict):
     anilist: Union[int, AniList]

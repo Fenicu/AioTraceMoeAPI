@@ -38,10 +38,8 @@ async def search_anime_private(message: types.Message):
     out = str()
 
     if isinstance(best_result.anilist, AniList):
-        link = f"https://myanimelist.net/anime/{best_result.anilist.id_mal}"
-
         if len(best_result.anilist.title) > 0:
-            out += f"{md.hlink('Title:', link)}\n"
+            out += f"{md.hlink('Title:', best_result.anilist.mal_url)}\n"
             for k, v in best_result.anilist.title.items():
                 if v is None:
                     continue

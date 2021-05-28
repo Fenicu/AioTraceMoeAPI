@@ -12,7 +12,7 @@ async def search_anime(path, url):
     anime_response = await api.search(path, is_url=url)
     best_result = anime_response.result[0]
     if isinstance(best_result.anilist, types.AniList):
-        print(f"Anime: https://myanimelist.net/anime/{best_result.anilist.id_mal}")
+        print(f"Anime: {best_result.anilist.mal_url}")
 
         if len(best_result.anilist.title) > 0:
             print("Title:")
