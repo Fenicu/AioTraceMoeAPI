@@ -4,6 +4,7 @@ from urllib.parse import urljoin, quote_plus
 from typing import Optional, Union
 
 import aiohttp
+from aiohttp.client_reqrep import ClientResponse
 from .types import AnimeResponse, AnimeSearch, BotMe, AniList
 
 # API reference https://soruly.github.io/trace.moe-api/#/
@@ -76,29 +77,7 @@ class TraceMoe:
                                            "anilistID": ani_list_id,
                                            "cutBorders": cut_borders,
                                            "anilistInfo": anilist_info}) as resp:
-                    try:
-                        prepare_response = await resp.text()
-                        response = loads(prepare_response)
-                    except Exception as error:
-                        raise error
-                    if response == "Error: Search queue is full":
-                        raise Exception(response)
-                    elif "error" in response:
-                        if response["error"] != str():
-                            raise Exception(response["error"])
-                    for idx, _anime in enumerate(response["result"]):
-                        _anime["afrom"] = _anime["from"]
-                        del _anime["from"]
-                        search = AnimeSearch(_anime)
-                        if isinstance(search.anilist, dict):
-                            _anime["anilist"]["id_mal"] = _anime["anilist"]["idMal"]
-                            _anime["anilist"]["is_adult"] = _anime["anilist"]["isAdult"]
-                            del _anime["anilist"]["isAdult"]
-                            del _anime["anilist"]["idMal"]
-                            search.anilist = AniList(_anime["anilist"])
-                        response["result"][idx] = search
-                    response["frame_count"] = response["frameCount"]
-                    return AnimeResponse(response)
+                    return await self._to_search_object(resp)
 
         elif isinstance(path, io.BytesIO):
             async with aiohttp.ClientSession(headers=self.headers) as session:
@@ -109,29 +88,7 @@ class TraceMoe:
                                             "anilistInfo": anilist_info},
                                         data={
                                             "image": path}) as resp:
-                    try:
-                        prepare_response = await resp.text()
-                        response = loads(prepare_response)
-                    except Exception as error:
-                        raise error
-                    if response == "Error: Search queue is full":
-                        raise Exception(response)
-                    elif "error" in response:
-                        if response["error"] != str():
-                            raise Exception(response["error"])
-                    for idx, _anime in enumerate(response["result"]):
-                        _anime["afrom"] = _anime["from"]
-                        del _anime["from"]
-                        search = AnimeSearch(_anime)
-                        if isinstance(search.anilist, dict):
-                            _anime["anilist"]["id_mal"] = _anime["anilist"]["idMal"]
-                            _anime["anilist"]["is_adult"] = _anime["anilist"]["isAdult"]
-                            del _anime["anilist"]["isAdult"]
-                            del _anime["anilist"]["idMal"]
-                            search.anilist = AniList(_anime["anilist"])
-                        response["result"][idx] = search
-                    response["frame_count"] = response["frameCount"]
-                    return AnimeResponse(response)
+                    return await self._to_search_object(resp)
 
         else:
             with open(path, "rb") as file:
@@ -143,26 +100,29 @@ class TraceMoe:
                                                 "anilistInfo": anilist_info},
                                             data={
                                                 "image": file}) as resp:
-                        try:
-                            prepare_response = await resp.text()
-                            response = loads(prepare_response)
-                        except Exception as error:
-                            raise error
-                        if response == "Error: Search queue is full":
-                            raise Exception(response)
-                        elif "error" in response:
-                            if response["error"] != str():
-                                raise Exception(response["error"])
-                        for idx, _anime in enumerate(response["result"]):
-                            _anime["afrom"] = _anime["from"]
-                            del _anime["from"]
-                            search = AnimeSearch(_anime)
-                            if isinstance(search.anilist, dict):
-                                _anime["anilist"]["id_mal"] = _anime["anilist"]["idMal"]
-                                _anime["anilist"]["is_adult"] = _anime["anilist"]["isAdult"]
-                                del _anime["anilist"]["isAdult"]
-                                del _anime["anilist"]["idMal"]
-                                search.anilist = AniList(_anime["anilist"])
-                            response["result"][idx] = search
-                        response["frame_count"] = response["frameCount"]
-                        return AnimeResponse(response)
+                        return await self._to_search_object(resp)
+
+    async def _to_search_object(self, response: ClientResponse) -> AnimeResponse:
+        try:
+            prepare_response = await response.text()
+            response = loads(prepare_response)
+        except Exception as error:
+            raise error
+        if response == "Error: Search queue is full":
+            raise Exception(response)
+        elif "error" in response:
+            if response["error"] != str():
+                raise Exception(response["error"])
+        for idx, _anime in enumerate(response["result"]):
+            _anime["afrom"] = _anime["from"]
+            del _anime["from"]
+            search = AnimeSearch(_anime)
+            if isinstance(search.anilist, dict):
+                _anime["anilist"]["id_mal"] = _anime["anilist"]["idMal"]
+                _anime["anilist"]["is_adult"] = _anime["anilist"]["isAdult"]
+                del _anime["anilist"]["isAdult"]
+                del _anime["anilist"]["idMal"]
+                search.anilist = AniList(_anime["anilist"])
+            response["result"][idx] = search
+        response["frame_count"] = response["frameCount"]
+        return AnimeResponse(response)
