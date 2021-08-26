@@ -8,7 +8,7 @@ api = TraceMoe()
 # or api = TraceMoe(token="ABC")
 
 
-async def search_anime(path, url):
+async def search_anime(path: str, url: bool):
     anime_response = await api.search(path, is_url=url)
     best_result = anime_response.result[0]
     if isinstance(best_result.anilist, types.AniList):
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     path = os.path.join(os.path.abspath("."), "pics", "bleach.jpg")
     url = False
     if not os.path.isfile(path):
-        path = "https://upload.wikimedia.org/wikipedia/en/7/7e/Hollowbankai.jpg"
+        path = "https://s1.zerochan.net/Kurosaki.Ichigo.600.172225.jpg"
         url = True
     loop = asyncio.get_event_loop()
     loop.run_until_complete(search_anime(path, url))
