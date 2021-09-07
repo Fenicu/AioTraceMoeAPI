@@ -23,7 +23,7 @@ class BotMe(BaseModel):
     priority: int
     concurrency: int
     quota: int
-    quota_used: int
+    quota_used: int = Field(alias="quotaUsed")
     limits: RateLimit
 
 
