@@ -29,7 +29,7 @@ class BotMe(BaseModel):
 
 class AniList(BaseModel):
     id: int
-    id_mal: int = Field(alias="idMal")
+    id_mal: Optional[int] = Field(alias="idMal")
     title: Dict[str, Optional[str]]
     synonyms: List[str]
     is_adult: bool = Field(alias="isAdult")
