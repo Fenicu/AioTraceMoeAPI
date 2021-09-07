@@ -1,13 +1,16 @@
 import io
-from json import loads
-from urllib.parse import urljoin, quote_plus
 from typing import Optional, Union
+from urllib.parse import quote_plus, urljoin
 
 import aiohttp
 from aiohttp.client_reqrep import ClientResponse
-from .types import AnimeResponse, AnimeSearch, BotMe, AniList, RateLimit
+
+from .exceptions import SearchQueueFull, TraceMoeAPIError
+from .types import AnimeResponse, BotMe
 
 # API reference https://soruly.github.io/trace.moe-api/#/
+
+LIMIT_HEADERS = ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
 
 
 class TraceMoe:
@@ -110,44 +113,26 @@ class TraceMoe:
 
     async def _to_search_object(self, response_api: ClientResponse) -> AnimeResponse:
         try:
-            response_json = loads(await response_api.text())
+            response_json = await response_api.json()
         except Exception as error:
             raise error
-        if response_json == "Error: Search queue is full":
-            raise Exception(response_json)
-        elif "error" in response_json:
-            if response_json["error"] != str():
-                raise Exception(response_json["error"])
-        for idx, _anime in enumerate(response_json["result"]):
-            _anime["afrom"] = _anime["from"]
-            del _anime["from"]
-            search = AnimeSearch(_anime)
-            if isinstance(search.anilist, dict):
-                _anime["anilist"]["id_mal"] = _anime["anilist"]["idMal"]
-                _anime["anilist"]["is_adult"] = _anime["anilist"]["isAdult"]
-                del _anime["anilist"]["isAdult"]
-                del _anime["anilist"]["idMal"]
-                search.anilist = AniList(_anime["anilist"])
-            response_json["result"][idx] = search
-        response_json["frame_count"] = response_json["frameCount"]
-        response_json["limits"] = RateLimit(
-            dict(
-                limit=int(response_api.headers["x-ratelimit-limit"]),
-                remaining=int(response_api.headers["x-ratelimit-remaining"]),
-                reset=int(response_api.headers["x-ratelimit-reset"]),
-            )
-        )
-        return AnimeResponse(response_json)
+        if response_json["error"] == "Error: Search queue is full":
+            raise SearchQueueFull(response_api.url)
+        response_json["limits"] = {
+            key: value
+            for key, value in response_api.headers.items()
+            if key in LIMIT_HEADERS
+        }
+        anime = AnimeResponse(**response_json)
+        if anime.error is not None:
+            raise TraceMoeAPIError(url=response_api.url, text=anime.error)
+        return anime
 
     async def _to_me_object(self, response_api: ClientResponse) -> BotMe:
         response_json = await response_api.json()
-        response_json["quota_used"] = response_json["quotaUsed"]
-        del response_json["quotaUsed"]
-        response_json["limits"] = RateLimit(
-            dict(
-                limit=int(response_api.headers["x-ratelimit-limit"]),
-                remaining=int(response_api.headers["x-ratelimit-remaining"]),
-                reset=int(response_api.headers["x-ratelimit-reset"]),
-            )
-        )
-        return BotMe(response_json)
+        response_json["limits"] = {
+            key: value
+            for key, value in response_api.headers.items()
+            if key in LIMIT_HEADERS
+        }
+        return BotMe(**response_json)

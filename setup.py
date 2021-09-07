@@ -33,7 +33,7 @@ setup(
     url='https://github.com/Fenicu/AioTraceMoeAPI',
     license='MIT',
     author='Fenicu',
-    requires_python='>=3.7',
+    python_requires='>=3.7',
     author_email='Fenicu@fenicu.men',
     description='Is a pretty simple and fully asynchronous wrapper for Trace.Moe API',
     classifiers=[

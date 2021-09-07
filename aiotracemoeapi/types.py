@@ -1,15 +1,13 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 from datetime import datetime
+from pydantic import BaseModel, Field, validator
+from .utils import clamp
 
 
-class RateLimit(dict):
-    limit: int
-    remaining: int
-    reset: int
-
-    def __init__(self, *args, **kwargs):
-        super(RateLimit, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+class RateLimit(BaseModel):
+    limit: int = Field(alias="X-RateLimit-Limit")
+    remaining: int = Field(alias="X-RateLimit-Remaining")
+    reset: int = Field(alias="X-RateLimit-Reset")
 
     @property
     def reset_datetime(self):
@@ -20,7 +18,7 @@ class RateLimit(dict):
         return self.reset_datetime - datetime.now()
 
 
-class BotMe(dict):
+class BotMe(BaseModel):
     id: str
     priority: int
     concurrency: int
@@ -28,48 +26,44 @@ class BotMe(dict):
     quota_used: int
     limits: RateLimit
 
-    def __init__(self, *args, **kwargs):
-        super(BotMe, self).__init__(*args, **kwargs)
-        self.__dict__ = self
 
-
-class AniList(dict):
+class AniList(BaseModel):
     id: int
-    id_mal: int
-    title: Dict[str, Union[str, None]]
+    id_mal: int = Field(alias="idMal")
+    title: Dict[str, Optional[str]]
     synonyms: List[str]
-    is_adult: bool
-
-    def __init__(self, *args, **kwargs):
-        super(AniList, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+    is_adult: bool = Field(alias="isAdult")
 
     @property
     def mal_url(self) -> str:
         return f"https://myanimelist.net/anime/{self.id_mal}"
 
 
-class AnimeSearch(dict):
+class AnimeSearch(BaseModel):
     anilist: Union[int, AniList]
     filename: str
-    episode: Union[int, None]
-    afrom: float
-    to: float
+    episode: Optional[int]
+    anime_from: float = Field(alias="from")
+    anime_to: float = Field(alias="to")
     similarity: float
     video: str
     image: str
 
-    def __init__(self, *args, **kwargs):
-        super(AnimeSearch, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+    def short_similarity(self, formatting="{:.1%}", *args) -> str:
+        return clamp(self.similarity, format=formatting, *args)
 
 
-class AnimeResponse(dict):
-    frame_count: int
-    error: str
+class AnimeResponse(BaseModel):
+    frame_count: int = Field(alias="frameCount")
+    error: Optional[str]
     result: List[AnimeSearch]
     limits: RateLimit
 
-    def __init__(self, *args, **kwargs):
-        super(AnimeResponse, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+    @validator("error")
+    def has_error(cls, error):
+        if error != "":
+            return error
+
+    @property
+    def best_result(self) -> AnimeSearch:
+        return self.result[0]
