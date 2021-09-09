@@ -5,7 +5,7 @@ from urllib.parse import quote_plus, urljoin
 import aiohttp
 from aiohttp.client_reqrep import ClientResponse
 
-from .exceptions import SearchQueueFull, TraceMoeAPIError
+from . import exceptions as errors
 from .types import AnimeResponse, BotMe
 
 # API reference https://soruly.github.io/trace.moe-api/#/
@@ -116,8 +116,6 @@ class TraceMoe:
             response_json = await response_api.json()
         except Exception as error:
             raise error
-        if response_json["error"] == "Error: Search queue is full":
-            raise SearchQueueFull(response_api.url)
         response_json["limits"] = {
             key: value
             for key, value in response_api.headers.items()
@@ -125,7 +123,68 @@ class TraceMoe:
         }
         anime = AnimeResponse(**response_json)
         if anime.error is not None:
-            raise TraceMoeAPIError(url=response_api.url, text=anime.error)
+            if anime.error == "Invalid API key":
+                raise errors.InvalidAPIKey(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "Search quota depleted":
+                raise errors.SearchQuotaDepleted(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "Concurrency limit exceeded":
+                raise errors.ConcurrencyLimitExceeded(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "Error: Search queue is full":
+                raise errors.SearchQueueFull(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "Invalid image url":
+                raise errors.InvalidImageUrl(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif "Failed to fetch image" in anime.error:
+                raise errors.FailedFetchImage(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "Failed to process image":
+                raise errors.FailedProcessImage(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            elif anime.error == "OpenCV: Failed to detect and cut borders":
+                raise errors.FailedDetectAndCutBorders(
+                    url=response_api.url,
+                    text=anime.error,
+                    raw_response=response_api,
+                    anime_response_object=anime,
+                )
+            raise errors.TraceMoeAPIError(
+                url=response_api.url,
+                text=anime.error,
+                raw_response=response_api,
+                anime_response_object=anime,
+            )
         return anime
 
     async def _to_me_object(self, response_api: ClientResponse) -> BotMe:
