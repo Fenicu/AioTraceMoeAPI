@@ -54,9 +54,9 @@ class AnimeSearch(BaseModel):
 
 
 class AnimeResponse(BaseModel):
-    frame_count: int = Field(alias="frameCount")
+    frame_count: Optional[int] = Field(alias="frameCount")
     error: Optional[str]
-    result: List[AnimeSearch]
+    result: Optional[List[AnimeSearch]]
     limits: RateLimit
 
     @validator("error")
