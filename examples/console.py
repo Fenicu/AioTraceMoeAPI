@@ -5,38 +5,38 @@ import os.path
 from aiotracemoeapi import TraceMoe, types
 
 api = TraceMoe()
-# or api = TraceMoe(token="ABC")
 
 
 async def search_anime(path: str, url: bool):
     anime = await api.search(path, is_url=url)
-    if isinstance(anime.best_result.anilist, types.AniList):
-        print(f"Anime: {anime.best_result.anilist.mal_url}")
+    parse_text(anime)
 
-        if len(anime.best_result.anilist.title) > 0:
+
+def parse_text(anime_response: types.AnimeResponse):
+    if isinstance(anime_response.best_result.anilist, types.AniList):
+        if len(anime_response.best_result.anilist.title) > 0:
             print("Title:")
-            for k, v in anime.best_result.anilist.title.items():
+            for k, v in anime_response.best_result.anilist.title.items():
                 if v is None:
                     continue
                 print(f"{k}: {v}")
-
-        if len(anime.best_result.anilist.synonyms) > 0:
+            print(f"My Anime List: {anime_response.best_result.anilist.mal_url}")
+        if len(anime_response.best_result.anilist.synonyms) > 0:
             print("Synonyms:")
-            for syn in anime.best_result.anilist.synonyms:
+            for syn in anime_response.best_result.anilist.synonyms:
                 print(syn)
-
-        if anime.best_result.anilist.is_adult:
-            print("Hentai 🔞!")
-
-    if anime.best_result.episode:
-        print(f"Episode: {anime.best_result.episode}")
-
-    if anime.best_result.anime_from:
+        if anime_response.best_result.anilist.is_adult:
+            print("Hentai🔞")
+    if anime_response.best_result.episode:
+        episode = anime_response.best_result.episode
+        if isinstance(anime_response.best_result.episode, list):
+            episode = " | ".join(str(ep) for ep in anime_response.best_result.episode)
+        print(f"Episode: {episode}")
+    if anime_response.best_result.anime_from:
         print(
-            f"Starting time of the matching scene: {str(dt.timedelta(seconds=int(anime.best_result.anime_from)))}"
+            f"Starting time of the matching scene: {dt.timedelta(seconds=int(anime_response.best_result.anime_from))}"
         )
-
-    print(f"Similarity: {anime.best_result.short_similarity()}")
+    print(f"Similarity: {anime_response.best_result.short_similarity()}")
 
 
 if __name__ == "__main__":
