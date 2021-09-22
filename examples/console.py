@@ -12,19 +12,19 @@ async def search_anime(path: str, url: bool):
         anime = await api.search(path, is_url=url)
 
     except exceptions.SearchQueueFull:
-        await print("Search queue is full, try again later")
+        print("Search queue is full, try again later")
         return
 
     except exceptions.SearchQuotaDepleted:
-        await print("Monthly search limit reached")
+        print("Monthly search limit reached")
         return
 
     except exceptions.TraceMoeAPIError as error:
-        await print(f"Unexpected error:\n{error.text}")
+        print(f"Unexpected error:\n{error.text}")
         return
 
     except Exception as error:
-        await print(f"Unknown error\n{error}")
+        print(f"Unknown error\n{error}")
         return
     parse_text(anime)
 
