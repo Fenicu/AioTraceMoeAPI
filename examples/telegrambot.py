@@ -3,7 +3,7 @@ import io
 from typing import Tuple
 
 from aiogram import Bot, Dispatcher, executor, md, types
-from aiotracemoeapi import TraceMoe
+from aiotracemoeapi import TraceMoe, exceptions
 from aiotracemoeapi.types import AniList, AnimeResponse
 
 API_TOKEN = "BOT TOKEN HERE"
@@ -42,8 +42,21 @@ async def search_anime(message: types.Message):
             await message.answer("This file type is not supported")
             return
         anime = await trace_bot.search(data)
-    except Exception:
-        await msg.edit_text(r"Ooops ¯\_(ツ)_/¯")
+
+    except exceptions.SearchQueueFull:
+        await msg.edit_text("Search queue is full, try again later")
+        return
+
+    except exceptions.SearchQuotaDepleted:
+        await msg.edit_text("Monthly search limit reached")
+        return
+
+    except exceptions.TraceMoeAPIError as error:
+        await msg.edit_text(f"Unexpected error:\n{error.text}")
+        return
+
+    except Exception as error:
+        await msg.edit_text(f"Unknown error\n{error}")
         return
 
     out, kb = parse_text(anime)

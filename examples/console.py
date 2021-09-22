@@ -2,13 +2,30 @@ import asyncio
 import datetime as dt
 import os.path
 
-from aiotracemoeapi import TraceMoe, types
+from aiotracemoeapi import TraceMoe, exceptions, types
 
 api = TraceMoe()
 
 
 async def search_anime(path: str, url: bool):
-    anime = await api.search(path, is_url=url)
+    try:
+        anime = await api.search(path, is_url=url)
+
+    except exceptions.SearchQueueFull:
+        await print("Search queue is full, try again later")
+        return
+
+    except exceptions.SearchQuotaDepleted:
+        await print("Monthly search limit reached")
+        return
+
+    except exceptions.TraceMoeAPIError as error:
+        await print(f"Unexpected error:\n{error.text}")
+        return
+
+    except Exception as error:
+        await print(f"Unknown error\n{error}")
+        return
     parse_text(anime)
 
 
