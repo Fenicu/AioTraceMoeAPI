@@ -42,7 +42,7 @@ class AniList(BaseModel):
 class AnimeSearch(BaseModel):
     anilist: Union[int, AniList]
     filename: str
-    episode: Union[int, str, None]
+    episode: Optional[Union[int, float, str, List[Union[int, float, str]]]]
     anime_from: float = Field(alias="from")
     anime_to: float = Field(alias="to")
     similarity: float
