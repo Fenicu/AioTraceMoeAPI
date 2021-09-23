@@ -1,4 +1,9 @@
 # <p align="center">AioTraceMoeAPI
+ 
+[![MIT License](https://img.shields.io/pypi/l/aiotracemoeapi)](https://opensource.org/licenses/MIT)
+[![PyPi Package Version](https://img.shields.io/pypi/v/aiotracemoeapi)](https://pypi.python.org/pypi/aiotracemoeapi)
+[![Downloads](https://img.shields.io/pypi/dm/aiotracemoeapi.svg)](https://pypi.python.org/pypi/aiotracemoeapi)
+[![Supported python versions](https://img.shields.io/pypi/pyversions/aiotracemoeapi)](https://pypi.python.org/pypi/aiotracemoeapi)
 
 <p align="center">A simple, but extensible Python implementation for the trace.moe API.
 
@@ -6,11 +11,13 @@
   * [Getting started.](#getting-started)
   * [Writing your first code](#writing-your-first-code)
 
+
 ## Getting started.
 install from PyPi
 ```
 $ python -m pip install aiotracemoeapi
 ```
+
 
 ## Writing your first code
 ```python
