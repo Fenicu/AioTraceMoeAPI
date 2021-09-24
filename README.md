@@ -1,5 +1,6 @@
 # <p align="center">AioTraceMoeAPI
  
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/13726d8a3e134ee6bd6adf1bf66d6c8a)](https://app.codacy.com/gh/Fenicu/AioTraceMoeAPI?utm_source=github.com&utm_medium=referral&utm_content=Fenicu/AioTraceMoeAPI&utm_campaign=Badge_Grade_Settings)
 [![MIT License](https://img.shields.io/pypi/l/aiotracemoeapi)](https://opensource.org/licenses/MIT)
 [![PyPi Package Version](https://img.shields.io/pypi/v/aiotracemoeapi)](https://pypi.python.org/pypi/aiotracemoeapi)
 [![Downloads](https://img.shields.io/pypi/dm/aiotracemoeapi.svg)](https://pypi.python.org/pypi/aiotracemoeapi)
