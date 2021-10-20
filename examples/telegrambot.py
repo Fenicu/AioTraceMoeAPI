@@ -1,8 +1,10 @@
 import datetime as dt
 import io
+from asyncio.exceptions import TimeoutError
 from typing import Tuple
 
 from aiogram import Bot, Dispatcher, executor, md, types
+
 from aiotracemoeapi import TraceMoe, exceptions
 from aiotracemoeapi.types import AniList, AnimeResponse
 
@@ -55,6 +57,9 @@ async def search_anime(message: types.Message):
         await msg.edit_text(f"Unexpected error:\n{error.text}")
         return
 
+    except TimeoutError:
+        await msg.edit_text("Server timed out. Try again later")
+
     except Exception as error:
         await msg.edit_text(f"Unknown error\n{error}")
         return
@@ -63,7 +68,7 @@ async def search_anime(message: types.Message):
     await msg.edit_text(out, disable_web_page_preview=True, reply_markup=kb)
     if not anime.best_result.anilist.is_adult:
         await message.chat.do(types.ChatActions.UPLOAD_VIDEO)
-        await message.reply_video(anime.best_result.video)
+        await msg.reply_video(anime.best_result.video)
 
 
 @dp.message_handler(
@@ -116,5 +121,12 @@ def parse_text(anime_response: AnimeResponse) -> Tuple[str, types.InlineKeyboard
     return out, kb
 
 
+async def on_startup(dp: Dispatcher):
+    bot_me = await dp.bot.me
+    tm_me = await trace_bot.me()
+    print(f"Bot @{bot_me.username} starting")
+    print(f"You have {tm_me.quota_used}/{tm_me.quota} anime search queries left")
+
+
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)

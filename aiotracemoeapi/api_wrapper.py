@@ -1,9 +1,8 @@
 import io
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 from urllib.parse import quote_plus, urljoin
 
 import aiohttp
-from aiohttp.client_reqrep import ClientResponse
 
 from . import exceptions as errors
 from .types import AnimeResponse, BotMe
@@ -28,14 +27,18 @@ class TraceMoe:
 
     async def make_request(
         self, url: str, params: Optional[dict] = None, data: Optional[dict] = None
-    ) -> ClientResponse:
+    ) -> Tuple[Dict[str, Any], Dict[str, int]]:
         async with aiohttp.ClientSession(headers=self.headers) as session:
             async with session.request(
                 "POST" if data else "GET", url, params=params, data=data, timeout=self.timeout
             ) as response:
                 status = response.status
+                limit = {
+                    key: value for key, value in response.headers.items() if key in LIMIT_HEADERS
+                }
                 if status == 200:
-                    return response
+                    response_json = await response.json()
+                    return response_json, limit
                 if status in errors.ERRORS_STATUS_MAPPING:
                     _error: errors.TraceMoeAPIError = errors.ERRORS_STATUS_MAPPING[status]
                     error = _error(url, text=f"status code: {status}", raw_response=response)
@@ -47,9 +50,8 @@ class TraceMoe:
 
     async def me(self) -> BotMe:
         url = urljoin(self.api_url, "me")
-        response = await self.make_request(url)
-        _bot_me = await self._to_me_object(response)
-        return _bot_me
+        response, limit = await self.make_request(url)
+        return await self._to_me_object(response, limit)
 
     async def search(
         self,
@@ -96,33 +98,26 @@ class TraceMoe:
                 raise AttributeError("path must be str(url), not " f"{type(path).__name__}")
 
             params["url"] = quote_plus(path)
-            response = await self.make_request(url, params)
+            response, limit = await self.make_request(url, params)
 
         elif isinstance(path, io.BytesIO):
             data = {"image": path}
-            response = await self.make_request(url, params, data)
+            response, limit = await self.make_request(url, params, data)
 
         else:
             with open(path, "rb") as file:
                 data = {"image": file}
-                response = await self.make_request(url, params, data)
+                response, limit = await self.make_request(url, params, data)
 
-        return await self._to_search_object(response)
+        return await self._to_search_object(response, limit, url)
 
-    async def _to_search_object(self, response_api: ClientResponse) -> AnimeResponse:
-        try:
-            response_json = await response_api.json()
-        except Exception as error:
-            raise error
-        response_json["limits"] = {
-            key: value for key, value in response_api.headers.items() if key in LIMIT_HEADERS
-        }
+    async def _to_search_object(self, response_json: dict, limit: dict, url: str) -> AnimeResponse:
+        response_json["limits"] = limit
         anime = AnimeResponse(**response_json)
         if anime.error is not None:
             kwargs = dict(
-                url=response_api.url,
+                url=url,
                 text=anime.error,
-                raw_response=response_api,
                 anime_response_object=anime,
             )
             if anime.error == "Invalid API key":
@@ -144,9 +139,6 @@ class TraceMoe:
             raise errors.TraceMoeAPIError(**kwargs)
         return anime
 
-    async def _to_me_object(self, response_api: ClientResponse) -> BotMe:
-        response_json = await response_api.json()
-        response_json["limits"] = {
-            key: value for key, value in response_api.headers.items() if key in LIMIT_HEADERS
-        }
+    async def _to_me_object(self, response_json, limit) -> BotMe:
+        response_json["limits"] = limit
         return BotMe(**response_json)
