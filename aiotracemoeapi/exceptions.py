@@ -1,6 +1,8 @@
-from .types import AnimeResponse
 from typing import Optional
+
 from aiohttp import ClientResponse
+
+from .types import AnimeResponse
 
 # ERRORS reference https://github.com/soruly/trace.moe-api/blob/master/src/search.js
 
@@ -54,3 +56,32 @@ class FailedProcessImage(TraceMoeAPIError):
 
 class FailedDetectAndCutBorders(TraceMoeAPIError):
     pass
+
+
+class BadRequest(TraceMoeAPIError):
+    pass
+
+
+class ForbiddenError(TraceMoeAPIError):
+    pass
+
+
+class InternalServerError(TraceMoeAPIError):
+    pass
+
+
+class ServiceUnavailable(TraceMoeAPIError):
+    pass
+
+
+class GatewayTimeout(TraceMoeAPIError):
+    pass
+
+
+ERRORS_STATUS_MAPPING = {
+    400: BadRequest,
+    403: ForbiddenError,
+    500: InternalServerError,
+    503: ServiceUnavailable,
+    504: GatewayTimeout,
+}

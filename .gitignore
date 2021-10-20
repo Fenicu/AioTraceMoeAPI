@@ -6,3 +6,5 @@
 .vscode
 env
 Makefile
+pyproject.toml
+__pycache__

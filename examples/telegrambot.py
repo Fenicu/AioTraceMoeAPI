@@ -33,11 +33,11 @@ async def search_anime(message: types.Message):
     try:
         data = io.BytesIO()
         if message.content_type in types.ContentTypes.VIDEO:
-            data = await message.video.download(destination_file=data)
+            await message.video.download(destination_file=data)
         elif message.content_type in types.ContentTypes.ANIMATION:
-            data = await message.animation.download(destination_file=data)
+            await message.animation.download(destination_file=data)
         elif message.content_type in types.ContentTypes.PHOTO:
-            data = await message.photo[-1].download(destination_file=data)
+            await message.photo[-1].download(destination_file=data)
         else:
             await message.answer("This file type is not supported")
             return
