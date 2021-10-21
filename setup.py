@@ -46,7 +46,6 @@ setup(
     ],
     install_requires=[
         'aiohttp>=3.7.2,<4.0.0',
-        'yarl==1.4.2',
         'pydantic>=1.8.2'
     ],
     include_package_data=False,
