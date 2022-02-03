@@ -9,7 +9,7 @@ from .types import AnimeResponse, BotMe
 
 # API reference https://soruly.github.io/trace.moe-api/#/
 
-LIMIT_HEADERS = ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
+LIMIT_HEADERS = ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"]
 
 
 class TraceMoe:
@@ -34,7 +34,7 @@ class TraceMoe:
             ) as response:
                 status = response.status
                 limit = {
-                    key: value for key, value in response.headers.items() if key in LIMIT_HEADERS
+                    key: value for key, value in response.headers.items() if key.lower() in LIMIT_HEADERS
                 }
                 if status == 200:
                     response_json = await response.json()

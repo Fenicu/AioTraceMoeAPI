@@ -7,9 +7,9 @@ from .utils import clamp
 
 
 class RateLimit(BaseModel):
-    limit: int = Field(alias="X-RateLimit-Limit")
-    remaining: int = Field(alias="X-RateLimit-Remaining")
-    reset: int = Field(alias="X-RateLimit-Reset")
+    limit: int = Field(alias="x-ratelimit-limit")
+    remaining: int = Field(alias="x-ratelimit-remaining")
+    reset: int = Field(alias="x-ratelimit-reset")
 
     @property
     def reset_datetime(self):
