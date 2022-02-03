@@ -34,7 +34,7 @@ class TraceMoe:
             ) as response:
                 status = response.status
                 limit = {
-                    key: value
+                    key.lower(): value
                     for key, value in response.headers.items()
                     if key.lower() in LIMIT_HEADERS
                 }
