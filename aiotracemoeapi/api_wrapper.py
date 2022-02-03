@@ -34,7 +34,9 @@ class TraceMoe:
             ) as response:
                 status = response.status
                 limit = {
-                    key: value for key, value in response.headers.items() if key.lower() in LIMIT_HEADERS
+                    key: value
+                    for key, value in response.headers.items()
+                    if key.lower() in LIMIT_HEADERS
                 }
                 if status == 200:
                     response_json = await response.json()
