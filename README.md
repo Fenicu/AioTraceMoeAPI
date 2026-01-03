@@ -54,6 +54,14 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Running Examples
+
+Examples can be run using `uv run`:
+
+```bash
+uv run examples/console.py
+```
+
 ### Search by File Upload
 
 You can search using a local file path.
