@@ -1,6 +1,6 @@
 [project]
 name = "aiotracemoeapi"
-version = "3.0.0"
+version = "3.1.0"
 description = "Async wrapper for Trace.moe API"
 readme = "README.md"
 requires-python = ">=3.9"
