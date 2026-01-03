@@ -26,6 +26,41 @@ class TraceMoe:
         self.timeout = timeout
         if token is not None:
             self.headers["x-trace-key"] = token
+        self._session: Optional[httpx.AsyncClient] = None
+
+    async def __aenter__(self) -> "TraceMoe":
+        self._session = httpx.AsyncClient(headers=self.headers, timeout=self.timeout)
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        """Close the client session."""
+        if self._session and not self._session.is_closed:
+            await self._session.aclose()
+            self._session = None
+
+    def _process_response(self, response: httpx.Response, url: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Process the response from the API."""
+        limit = {
+            key.lower(): value
+            for key, value in response.headers.items()
+            if key.lower() in LIMIT_HEADERS
+        }
+
+        if response.status_code == 200:
+            return response.json(), limit
+
+        error_cls = errors.ERRORS_STATUS_MAPPING.get(response.status_code, errors.TraceMoeAPIError)
+
+        try:
+            resp_json = response.json()
+            error_text = resp_json.get("error", response.text)
+        except Exception:
+            error_text = response.text
+
+        raise error_cls(url=url, text=f"{error_text} (Status: {response.status_code})", raw_response=response)
 
     async def make_request(
         self,
@@ -46,27 +81,13 @@ class TraceMoe:
         :return: Tuple of (response_json, limit_headers)
         :raises TraceMoeAPIError: If the request fails
         """
+        if self._session and not self._session.is_closed:
+            response = await self._session.request(method, url, params=params, data=data, files=files)
+            return self._process_response(response, url)
+
         async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
             response = await client.request(method, url, params=params, data=data, files=files)
-
-            limit = {
-                key.lower(): value
-                for key, value in response.headers.items()
-                if key.lower() in LIMIT_HEADERS
-            }
-
-            if response.status_code == 200:
-                return response.json(), limit
-
-            error_cls = errors.ERRORS_STATUS_MAPPING.get(response.status_code, errors.TraceMoeAPIError)
-
-            try:
-                resp_json = response.json()
-                error_text = resp_json.get("error", response.text)
-            except Exception:
-                error_text = response.text
-
-            raise error_cls(url=url, text=f"{error_text} (Status: {response.status_code})", raw_response=response)
+            return self._process_response(response, url)
 
     async def me(self) -> BotMe:
         """
