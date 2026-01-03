@@ -1,5 +1,5 @@
-# <p align="center">AioTraceMoeAPI
- 
+# AioTraceMoeAPI
+
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/13726d8a3e134ee6bd6adf1bf66d6c8a)](https://app.codacy.com/gh/Fenicu/AioTraceMoeAPI?utm_source=github.com&utm_medium=referral&utm_content=Fenicu/AioTraceMoeAPI&utm_campaign=Badge_Grade_Settings)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![MIT License](https://img.shields.io/pypi/l/aiotracemoeapi)](https://opensource.org/licenses/MIT)
@@ -7,70 +7,99 @@
 [![Downloads](https://img.shields.io/pypi/dm/aiotracemoeapi.svg)](https://pypi.python.org/pypi/aiotracemoeapi)
 [![Supported python versions](https://img.shields.io/pypi/pyversions/aiotracemoeapi)](https://pypi.python.org/pypi/aiotracemoeapi)
 
-<p align="center">A simple, but extensible Python implementation for the trace.moe API.
+A simple, but extensible asynchronous Python wrapper for the [trace.moe](https://trace.moe) API.
 
+## Key Features
 
-  * [Getting started.](#getting-started)
-  * [Writing your first code](#writing-your-first-code)
+*   **Async**: Built on top of `httpx` for high-performance asynchronous HTTP requests.
+*   **Typed**: Fully typed codebase for better developer experience and IDE support.
+*   **Pydantic v2**: Uses Pydantic v2 for robust data validation and serialization.
 
+## Installation
 
-## Getting started.
-install from PyPi
+You can install the package using `uv` or `pip`:
+
+```bash
+uv add aiotracemoeapi
 ```
-$ python -m pip install aiotracemoeapi
+
+or
+
+```bash
+pip install aiotracemoeapi
 ```
 
+## Usage Examples
 
-## Writing your first code
+### Basic Search by URL
+
 ```python
 import asyncio
-import datetime as dt
-import os.path
+from aiotracemoeapi import TraceMoe
 
-from aiotracemoeapi import TraceMoe, types
-
-api = TraceMoe()
-
-
-async def search_anime(path: str, url: bool):
-    anime = await api.search(path, is_url=url)
-    parse_text(anime)
-
-
-def parse_text(anime_response: types.AnimeResponse):
-    if isinstance(anime_response.best_result.anilist, types.AniList):
-        if len(anime_response.best_result.anilist.title) > 0:
-            print("Title:")
-            for k, v in anime_response.best_result.anilist.title.items():
-                if v is None:
-                    continue
-                print(f"{k}: {v}")
-            print(f"My Anime List: {anime_response.best_result.anilist.mal_url}")
-        if len(anime_response.best_result.anilist.synonyms) > 0:
-            print("Synonyms:")
-            for syn in anime_response.best_result.anilist.synonyms:
-                print(syn)
-        if anime_response.best_result.anilist.is_adult:
-            print("Hentai🔞")
-    if anime_response.best_result.episode:
-        episode = anime_response.best_result.episode
-        if isinstance(anime_response.best_result.episode, list):
-            episode = " | ".join(str(ep) for ep in anime_response.best_result.episode)
-        print(f"Episode: {episode}")
-    if anime_response.best_result.anime_from:
-        print(
-            f"Starting time of the matching scene: {dt.timedelta(seconds=int(anime_response.best_result.anime_from))}"
-        )
-    print(f"Similarity: {anime_response.best_result.short_similarity()}")
-
+async def main():
+    api = TraceMoe()
+    
+    # Search by URL
+    # Note: is_url=True is required when passing a URL string
+    result = await api.search("https://images.plurk.com/32B15UXxymfSMwKGTObY5e.jpg", is_url=True)
+    
+    if result.result:
+        print(f"Anime: {result.result[0].filename}")
+        print(f"Similarity: {result.result[0].similarity}")
+    else:
+        print("No results found.")
 
 if __name__ == "__main__":
-    path = os.path.join(os.path.abspath("."), "pics", "bleach.jpg")
-    url = False
-    if not os.path.isfile(path):
-        path = "https://s1.zerochan.net/Kurosaki.Ichigo.600.172225.jpg"
-        url = True
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(search_anime(path, url))
+    asyncio.run(main())
+```
 
+### Search by File Upload
+
+You can search using a local file path.
+
+```python
+import asyncio
+from aiotracemoeapi import TraceMoe
+
+async def main():
+    api = TraceMoe()
+    
+    # Search by local file path
+    # Ensure 'image.jpg' exists in your directory
+    try:
+        result = await api.search("image.jpg")
+        
+        if result.result:
+            print(f"Anime: {result.result[0].filename}")
+            print(f"Episode: {result.result[0].episode}")
+    except FileNotFoundError:
+        print("File not found!")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Checking Account Status
+
+You can check your API usage limits and quota.
+
+```python
+import asyncio
+from aiotracemoeapi import TraceMoe
+
+async def main():
+    # Initialize with your API token (optional, but recommended for higher limits)
+    # Get your token from https://trace.moe/account
+    api = TraceMoe(token="your_token_here")
+    
+    me = await api.me()
+    
+    print(f"ID: {me.id}")
+    print(f"Priority: {me.priority}")
+    print(f"Quota Used: {me.quota_used}")
+    print(f"Quota Total: {me.quota}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```

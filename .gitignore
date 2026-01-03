@@ -4,7 +4,4 @@
 *tests
 .flake8
 .vscode
-env
-Makefile
-pyproject.toml
 __pycache__

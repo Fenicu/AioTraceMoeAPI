@@ -1,0 +1,14 @@
+[project]
+name = "aiotracemoeapi"
+version = "3.0.0"
+description = "Async wrapper for Trace.moe API"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "httpx",
+    "pydantic>=2.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
