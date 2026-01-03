@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -34,18 +34,26 @@ class BotMe(BaseModel):
     concurrency: int
     quota: int
     quota_used: int = Field(alias="quotaUsed")
-    limits: Optional[RateLimit] = None
+    limits: RateLimit | None = None
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class AnimeTitle(BaseModel):
+    """Anime title in different languages."""
+
+    native: str | None = None
+    romaji: str | None = None
+    english: str | None = None
 
 
 class AniList(BaseModel):
     """AniList information."""
 
     id: int
-    id_mal: Optional[int] = Field(default=None, alias="idMal")
-    title: Dict[str, Optional[str]]
-    synonyms: List[str]
+    id_mal: int | None = Field(default=None, alias="idMal")
+    title: AnimeTitle
+    synonyms: list[str]
     is_adult: bool = Field(alias="isAdult")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -61,7 +69,7 @@ class AnimeSearch(BaseModel):
 
     anilist: Union[int, AniList]
     filename: str
-    episode: Optional[Union[int, float, str, List[Union[int, float, str]]]] = None
+    episode: Union[int, float, str, list[Union[int, float, str]]] | None = None
     anime_from: float = Field(alias="from")
     anime_to: float = Field(alias="to")
     similarity: float
@@ -70,18 +78,18 @@ class AnimeSearch(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    def short_similarity(self, formatting: str = "{:.1%}", *args) -> str:
+    def short_similarity(self, formatting: str = "{:.1%}") -> str:
         """Return formatted similarity string."""
-        return clamp(self.similarity, format=formatting, *args)
+        return clamp(self.similarity, format=formatting)
 
 
 class AnimeResponse(BaseModel):
     """Response model for /search endpoint."""
 
-    frame_count: Optional[int] = Field(default=None, alias="frameCount")
-    error: Optional[str] = ""
-    result: Optional[List[AnimeSearch]] = []
-    limits: Optional[RateLimit] = None
+    frame_count: int | None = Field(default=None, alias="frameCount")
+    error: str | None = ""
+    result: list[AnimeSearch] | None = []
+    limits: RateLimit | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -94,7 +102,7 @@ class AnimeResponse(BaseModel):
         return ""
 
     @property
-    def best_result(self) -> Optional[AnimeSearch]:
+    def best_result(self) -> AnimeSearch | None:
         """Return the best search result."""
         if self.result:
             return self.result[0]

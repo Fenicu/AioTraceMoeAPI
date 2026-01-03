@@ -1,4 +1,3 @@
-from typing import Optional
 
 import httpx
 
@@ -6,15 +5,15 @@ import httpx
 class TraceMoeAPIError(Exception):
     """Base exception for all TraceMoe API errors."""
 
-    url: Optional[str]
-    text: Optional[str]
-    _raw_response: Optional[httpx.Response]
+    url: str | None
+    text: str | None
+    _raw_response: httpx.Response | None
 
     def __init__(
         self,
-        url: Optional[str] = None,
-        text: Optional[str] = None,
-        raw_response: Optional[httpx.Response] = None,
+        url: str | None = None,
+        text: str | None = None,
+        raw_response: httpx.Response | None = None,
     ) -> None:
         """Initialize the exception."""
         self.url = url

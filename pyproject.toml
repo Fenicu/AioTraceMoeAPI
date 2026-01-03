@@ -1,6 +1,6 @@
 [project]
 name = "aiotracemoeapi"
-version = "3.1.1"
+version = "3.1.2"
 description = "Async wrapper for Trace.moe API"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,3 +12,74 @@ dependencies = [
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+src = ["src"]
+line-length = 120
+target-version = "py313"
+exclude = [
+    ".git",
+    ".ruff_cache",
+    "__pypackages__",
+    "__pycache__",
+    "*.pyi",
+    "venv",
+    ".venv",
+    "app/db/migrations/versions",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ANN",    # flake8-annotations
+    "S",      # flake8-bandit
+    "T20",    # flake8-print
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "ARG",    # flake8-unused-arguments
+    "ERA",    # eradicate
+    "PL",     # pylint
+    "PERF",   # perflint
+    "RUF",    # ruff-specific rules
+    "ASYNC",  # flake8-async
+    "FA",     # flake8-future-annotations
+]
+ignore = [
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    "D203", "D205", "D212", "D213", "D215", "D400", "D401", "D404",
+    "D405", "D406", "D407", "D408", "D409", "D410", "D411", "D413",
+    "D414", "D416", "D417",
+
+    "E402",
+
+    "ARG001", "ARG002",
+
+    "C901",     # complex-structure
+    "PLR0911",  # too-many-arguments
+    "PLR0912",  # too-many-branches
+    "PLR0913",  # too-many-arguments
+    "PLR0915",  # too-many-statements
+    "PLR5501",  # collapsible-else-if
+    "PLR2004",  # magic-value-comparison
+
+    "ANN002", "ANN003", "ANN401",
+    "B008",
+
+    "BLE001", # blind-except
+    "FBT001", "FBT002", # boolean-trap
+    "COM812", # trailing-comma-missing
+    "ISC001", # single-line-implicit-string-concatenation
+    "RUF001", "RUF002", "RUF003", # ambiguous unicode
+    "S101",   # assert
+    "TRY301", # abstract-raise
+    "UP006",  # non-pep585-annotation
+    "UP007",  # non-pep604-annotation
+]

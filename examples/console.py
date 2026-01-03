@@ -29,8 +29,8 @@ async def main():
                 
                 # The 'anilist' field can be an ID (int) or an AniList object depending on 'anilist_info' param (default True)
                 if isinstance(best.anilist, types.AniList):
-                    english_title = best.anilist.title.get('english')
-                    romaji_title = best.anilist.title.get('romaji')
+                    english_title = best.anilist.title.english
+                    romaji_title = best.anilist.title.romaji
                     title = english_title or romaji_title or "Unknown Title"
                     print(f"Title: {title}")
                     print(f"Is Adult: {'Yes' if best.anilist.is_adult else 'No'}")

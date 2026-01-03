@@ -1,12 +1,13 @@
+import asyncio
 import io
 import os
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Union
 from urllib.parse import urljoin
 
 import httpx
 
 from . import exceptions as errors
-from .types import AnimeResponse, BotMe
+from .types import AnimeResponse, BotMe, RateLimit
 
 LIMIT_HEADERS = ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"]
 
@@ -14,7 +15,7 @@ LIMIT_HEADERS = ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-rese
 class TraceMoe:
     """Async wrapper for Trace.moe API."""
 
-    def __init__(self, token: Optional[str] = None, timeout: float = 60.0) -> None:
+    def __init__(self, token: str | None = None, timeout: float = 60.0) -> None:
         """
         Initialize the TraceMoe client.
 
@@ -22,11 +23,11 @@ class TraceMoe:
         :param timeout: Request timeout in seconds
         """
         self.api_url = "https://api.trace.moe"
-        self.headers: Dict[str, str] = {}
+        self.headers: dict[str, str] = {}
         self.timeout = timeout
         if token is not None:
             self.headers["x-trace-key"] = token
-        self._session: Optional[httpx.AsyncClient] = None
+        self._session: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "TraceMoe":
         self._session = httpx.AsyncClient(headers=self.headers, timeout=self.timeout)
@@ -41,13 +42,23 @@ class TraceMoe:
             await self._session.aclose()
             self._session = None
 
-    def _process_response(self, response: httpx.Response, url: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _process_response(self, response: httpx.Response, url: str) -> tuple[dict[str, Any], RateLimit]:
         """Process the response from the API."""
-        limit = {
+        limit_data = {
             key.lower(): value
             for key, value in response.headers.items()
             if key.lower() in LIMIT_HEADERS
         }
+
+        # Ensure required fields are present
+        if "x-ratelimit-limit" not in limit_data:
+            limit_data["x-ratelimit-limit"] = 0
+        if "x-ratelimit-remaining" not in limit_data:
+            limit_data["x-ratelimit-remaining"] = 0
+        if "x-ratelimit-reset" not in limit_data:
+            limit_data["x-ratelimit-reset"] = 0
+
+        limit = RateLimit(**limit_data)
 
         if response.status_code == 200:
             return response.json(), limit
@@ -66,10 +77,10 @@ class TraceMoe:
         self,
         method: str,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        files: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        files: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], RateLimit]:
         """
         Make an HTTP request to the API.
 
@@ -118,7 +129,7 @@ class TraceMoe:
         :return: AnimeResponse object
         """
         url = urljoin(self.api_url, "search")
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if ani_list_id:
             params["anilistID"] = ani_list_id
@@ -139,47 +150,50 @@ class TraceMoe:
             response, limit = await self.make_request("POST", url, params=params, files=files)
 
         elif isinstance(path, str) and os.path.isfile(path):
-            with open(path, "rb") as file:
-                files = {"image": file}
-                response, limit = await self.make_request("POST", url, params=params, files=files)
+
+            def _read_file() -> bytes:
+                with open(path, "rb") as f:
+                    return f.read()
+
+            content = await asyncio.to_thread(_read_file)
+            files = {"image": (os.path.basename(path), content)}
+            response, limit = await self.make_request("POST", url, params=params, files=files)
         else:
             raise AttributeError("path must be a valid URL string, file path, or io.BytesIO object")
 
         return await self._to_search_object(response, limit, url)
 
-    async def _to_search_object(self, response_json: Dict[str, Any], limit: Dict[str, Any], url: str) -> AnimeResponse:
+    async def _to_search_object(self, response_json: dict[str, Any], limit: RateLimit, url: str) -> AnimeResponse:
         """Convert response JSON to AnimeResponse object and handle API-specific errors."""
-        response_json["limits"] = limit
-        anime = AnimeResponse(**response_json)
+        anime = AnimeResponse(**response_json, limits=limit)
 
         if anime.error:
-            kwargs = dict(
-                url=url,
-                text=anime.error,
-                anime_response_object=anime,
-            )
+            kwargs = {
+                "url": url,
+                "text": anime.error,
+                "anime_response_object": anime,
+            }
             if anime.error == "Invalid API key":
                 raise errors.InvalidAPIKey(**kwargs)
-            elif anime.error == "Search quota depleted":
+            if anime.error == "Search quota depleted":
                 raise errors.SearchQuotaDepleted(**kwargs)
-            elif anime.error == "Concurrency limit exceeded":
+            if anime.error == "Concurrency limit exceeded":
                 raise errors.ConcurrencyLimitExceeded(**kwargs)
-            elif anime.error == "Error: Search queue is full":
+            if anime.error == "Error: Search queue is full":
                 raise errors.SearchQueueFull(**kwargs)
-            elif anime.error == "Invalid image url":
+            if anime.error == "Invalid image url":
                 raise errors.InvalidImageUrl(**kwargs)
-            elif "Failed to fetch image" in anime.error:
+            if "Failed to fetch image" in anime.error:
                 raise errors.FailedFetchImage(**kwargs)
-            elif anime.error == "Failed to process image":
+            if anime.error == "Failed to process image":
                 raise errors.FailedProcessImage(**kwargs)
-            elif anime.error == "OpenCV: Failed to detect and cut borders":
+            if anime.error == "OpenCV: Failed to detect and cut borders":
                 raise errors.FailedDetectAndCutBorders(**kwargs)
 
             raise errors.TraceMoeAPIError(**kwargs)
 
         return anime
 
-    async def _to_me_object(self, response_json: Dict[str, Any], limit: Dict[str, Any]) -> BotMe:
+    async def _to_me_object(self, response_json: dict[str, Any], limit: RateLimit) -> BotMe:
         """Convert response JSON to BotMe object."""
-        response_json["limits"] = limit
-        return BotMe(**response_json)
+        return BotMe(**response_json, limits=limit)
