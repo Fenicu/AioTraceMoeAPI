@@ -1,199 +1,286 @@
+from __future__ import annotations
+
 import asyncio
-import io
 import os
-from typing import Any, Union
-from urllib.parse import urljoin
+from collections.abc import Sequence
+from pathlib import Path
+from types import TracebackType
+from typing import IO, Any
+from urllib.parse import urlparse
 
 import httpx
 
 from . import exceptions as errors
-from .types import AnimeResponse, BotMe, RateLimit
+from .types import AnimeBatchResponse, AnimeResponse, BotMe, CutBorders, RateLimit, UsagePeriod, UsageStats
 
-LIMIT_HEADERS = ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"]
+DEFAULT_API_URL = "https://api.trace.moe"
+
+SearchSource = str | bytes | bytearray | memoryview | os.PathLike[str] | IO[bytes]
+Vector = str | Sequence[float]
+
+
+def _read_file(path: Path) -> bytes:
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+    return path.read_bytes()
 
 
 class TraceMoe:
     """Async wrapper for Trace.moe API."""
 
-    def __init__(self, token: str | None = None, timeout: float = 60.0) -> None:
+    def __init__(
+        self,
+        token: str | None = None,
+        *,
+        timeout: float = 60.0,
+        base_url: str = DEFAULT_API_URL,
+        client: httpx.AsyncClient | None = None,
+        max_retries: int = 0,
+        retry_delay: float = 1.0,
+    ) -> None:
         """
         Initialize the TraceMoe client.
 
-        :param token: API Key from https://trace.moe/account (Developer's Zone)
+        :param token: API Key from https://trace.moe/account, sent in the ``x-trace-key`` header
         :param timeout: Request timeout in seconds
+        :param base_url: API URL, change it to use a self-hosted trace.moe server
+        :param client: Your own ``httpx.AsyncClient``; it will not be closed by this wrapper
+        :param max_retries: How many times to retry on concurrency limit, rate limit, full queue or overload errors
+        :param retry_delay: Base delay between retries in seconds, doubled after every attempt
         """
-        self.api_url = "https://api.trace.moe"
+        self.base_url = base_url.rstrip("/")
         self.headers: dict[str, str] = {}
-        self.timeout = timeout
         if token is not None:
             self.headers["x-trace-key"] = token
-        self._session: httpx.AsyncClient | None = None
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self._session: httpx.AsyncClient | None = client
+        self._owns_session = client is None
 
-    async def __aenter__(self) -> "TraceMoe":
-        self._session = httpx.AsyncClient(headers=self.headers, timeout=self.timeout)
+    async def __aenter__(self) -> TraceMoe:
+        if self._session is None or self._session.is_closed:
+            self._session = httpx.AsyncClient(timeout=self.timeout)
+            self._owns_session = True
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.close()
 
     async def close(self) -> None:
-        """Close the client session."""
-        if self._session and not self._session.is_closed:
+        """Close the client session if it was created by this wrapper."""
+        if self._session is not None and self._owns_session:
             await self._session.aclose()
             self._session = None
 
-    def _process_response(self, response: httpx.Response, url: str) -> tuple[dict[str, Any], RateLimit]:
-        """Process the response from the API."""
-        limit_data = {
-            key.lower(): value
-            for key, value in response.headers.items()
-            if key.lower() in LIMIT_HEADERS
-        }
+    def _url(self, endpoint: str) -> str:
+        return f"{self.base_url}/{endpoint.lstrip('/')}"
 
-        # Ensure required fields are present
-        if "x-ratelimit-limit" not in limit_data:
-            limit_data["x-ratelimit-limit"] = 0
-        if "x-ratelimit-remaining" not in limit_data:
-            limit_data["x-ratelimit-remaining"] = 0
-        if "x-ratelimit-reset" not in limit_data:
-            limit_data["x-ratelimit-reset"] = 0
-
-        limit = RateLimit(**limit_data)
-
-        if response.status_code == 200:
-            return response.json(), limit
-
-        error_cls = errors.ERRORS_STATUS_MAPPING.get(response.status_code, errors.TraceMoeAPIError)
+    def _process_response(self, response: httpx.Response, url: str) -> tuple[Any, RateLimit]:
+        """Process the response from the API and raise an exception on error."""
+        limit = RateLimit.from_headers(response.headers)
 
         try:
-            resp_json = response.json()
-            error_text = resp_json.get("error", response.text)
-        except Exception:
-            error_text = response.text
+            data = response.json()
+        except ValueError:
+            data = None
 
-        raise error_cls(url=url, text=f"{error_text} (Status: {response.status_code})", raw_response=response)
+        error_text = data.get("error") if isinstance(data, dict) else None
+
+        if response.status_code == 200 and not error_text:
+            return data, limit
+
+        if not error_text:
+            error_text = response.text or response.reason_phrase
+        error_cls = errors.get_error_class(response.status_code, error_text)
+        raise error_cls(
+            url=url,
+            text=error_text,
+            raw_response=response,
+            status_code=response.status_code,
+            data=data if isinstance(data, dict) else None,
+        )
+
+    async def _send(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        if self._session is not None and not self._session.is_closed:
+            return await self._session.request(method, url, headers=self.headers, **kwargs)
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            return await client.request(method, url, headers=self.headers, **kwargs)
 
     async def make_request(
         self,
         method: str,
         url: str,
         params: dict[str, Any] | None = None,
-        data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, Any], RateLimit]:
+        json: Any = None,
+    ) -> tuple[Any, RateLimit]:
         """
-        Make an HTTP request to the API.
+        Make an HTTP request to the API, retrying on temporary errors if ``max_retries`` is set.
 
         :param method: HTTP method (GET, POST)
         :param url: URL to request
         :param params: Query parameters
-        :param data: Form data
         :param files: Files to upload
-        :return: Tuple of (response_json, limit_headers)
+        :param json: JSON body
+        :return: Tuple of (response_json, rate_limit)
         :raises TraceMoeAPIError: If the request fails
         """
-        if self._session and not self._session.is_closed:
-            response = await self._session.request(method, url, params=params, data=data, files=files)
-            return self._process_response(response, url)
-
-        async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
-            response = await client.request(method, url, params=params, data=data, files=files)
-            return self._process_response(response, url)
+        attempt = 0
+        while True:
+            response = await self._send(method, url, params=params, files=files, json=json)
+            try:
+                return self._process_response(response, url)
+            except errors.RETRYABLE_ERRORS as exc:
+                if attempt >= self.max_retries:
+                    raise
+                delay = self.retry_delay * 2**attempt
+                if isinstance(exc, errors.TooManyRequests) and exc.retry_after is not None:
+                    delay = max(delay, exc.retry_after)
+                attempt += 1
+                await asyncio.sleep(delay)
 
     async def me(self) -> BotMe:
         """
-        Check the search quota and limit for your account.
+        Check the search quota and limits for your account (or IP address without an API key).
 
         :return: BotMe object containing quota and limit info
         """
-        url = urljoin(self.api_url, "me")
-        response, limit = await self.make_request("GET", url)
-        return await self._to_me_object(response, limit)
+        response, limit = await self.make_request("GET", self._url("me"))
+        return BotMe.model_validate({**response, "limits": limit})
+
+    async def usage(self, period: UsagePeriod = "hour") -> list[UsageStats]:
+        """
+        Get your search history broken down by time period.
+
+        :param period: ``minute`` (past 60 minutes), ``hour`` (past 72 hours) or ``day`` (past 60 days)
+        :return: List of UsageStats objects
+        """
+        response, _ = await self.make_request("GET", self._url("me"), params={"period": period})
+        return [UsageStats.model_validate(item) for item in response]
+
+    @staticmethod
+    def _search_params(
+        anilist_id: int | None,
+        anilist_info: bool,
+        cut_borders: bool | int | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if anilist_id:
+            params["anilistID"] = anilist_id
+        if anilist_info:
+            params["anilistInfo"] = ""
+        if cut_borders is not None:
+            mode = CutBorders(int(cut_borders))
+            if mode is not CutBorders.NONE:
+                params["cutBorders"] = int(mode)
+        return params
+
+    @staticmethod
+    def _looks_like_url(source: str) -> bool:
+        return urlparse(source).scheme in ("http", "https")
+
+    @staticmethod
+    async def _read_source(source: SearchSource) -> tuple[str, bytes]:
+        """Read an upload source into (filename, content)."""
+        if isinstance(source, (bytes, bytearray, memoryview)):
+            return "image", bytes(source)
+
+        if isinstance(source, (str, os.PathLike)):
+            path = Path(source)
+            return path.name, await asyncio.to_thread(_read_file, path)
+
+        if hasattr(source, "read"):
+            content = await asyncio.to_thread(source.read)
+            if not isinstance(content, bytes):
+                raise TypeError("file-like object must be opened in binary mode")
+            name = getattr(source, "name", None)
+            return (os.path.basename(name) if isinstance(name, str) else "image"), content
+
+        raise TypeError(f"Unsupported search source type: {type(source).__name__}")
 
     async def search(
         self,
-        path: Union[str, io.BytesIO],
-        ani_list_id: int = 0,
-        cut_borders: bool = True,
+        source: SearchSource,
+        *,
+        anilist_id: int | None = None,
+        cut_borders: bool | CutBorders = True,
         anilist_info: bool = True,
-        is_url: bool = False,
+        is_url: bool | None = None,
     ) -> AnimeResponse:
         """
-        Search for an anime scene.
+        Search for an anime scene by image (or the 1st frame of a video / gif).
 
-        :param path: URL string or file-like object (BytesIO) or file path
-        :param ani_list_id: Filter by Anilist ID
-        :param cut_borders: Cut black borders (default: True)
-        :param anilist_info: Include Anilist info (default: True)
-        :param is_url: Set to True if path is a URL
+        :param source: Image URL, file path, ``bytes`` or a binary file-like object
+        :param anilist_id: Search only within this AniList ID
+        :param cut_borders: Cut black borders: ``True``/``CutBorders.CUT``, ``False``/``CutBorders.NONE``
+            or ``CutBorders.BOTH`` to search with both images (may cost 2 search credits)
+        :param anilist_info: Include AniList info in results instead of a bare ID
+        :param is_url: Force treating a string ``source`` as URL (``True``) or file path (``False``);
+            by default strings starting with ``http://`` or ``https://`` are treated as URLs
         :return: AnimeResponse object
         """
-        url = urljoin(self.api_url, "search")
-        params: dict[str, Any] = {}
+        url = self._url("search")
+        params = self._search_params(anilist_id, anilist_info, cut_borders)
 
-        if ani_list_id:
-            params["anilistID"] = ani_list_id
-        if cut_borders:
-            params["cutBorders"] = ""
-        if anilist_info:
-            params["anilistInfo"] = ""
+        if is_url and not isinstance(source, str):
+            raise TypeError(f"source must be a URL string when is_url=True, not {type(source).__name__}")
 
-        if is_url:
-            if not isinstance(path, str):
-                raise AttributeError(f"path must be str(url), not {type(path).__name__}")
-
-            params["url"] = path
+        if isinstance(source, str) and (is_url or (is_url is None and self._looks_like_url(source))):
+            params["url"] = source
             response, limit = await self.make_request("GET", url, params=params)
-
-        elif isinstance(path, io.BytesIO):
-            files = {"image": path}
-            response, limit = await self.make_request("POST", url, params=params, files=files)
-
-        elif isinstance(path, str) and os.path.isfile(path):
-
-            def _read_file() -> bytes:
-                with open(path, "rb") as f:
-                    return f.read()
-
-            content = await asyncio.to_thread(_read_file)
-            files = {"image": (os.path.basename(path), content)}
-            response, limit = await self.make_request("POST", url, params=params, files=files)
         else:
-            raise AttributeError("path must be a valid URL string, file path, or io.BytesIO object")
+            filename, content = await self._read_source(source)
+            files = {"image": (filename, content)}
+            response, limit = await self.make_request("POST", url, params=params, files=files)
 
-        return await self._to_search_object(response, limit, url)
+        return AnimeResponse.model_validate({**response, "limits": limit})
 
-    async def _to_search_object(self, response_json: dict[str, Any], limit: RateLimit, url: str) -> AnimeResponse:
-        """Convert response JSON to AnimeResponse object and handle API-specific errors."""
-        anime = AnimeResponse(**response_json, limits=limit)
+    async def search_vector(
+        self,
+        vector: Vector,
+        *,
+        anilist_id: int | None = None,
+        anilist_info: bool = True,
+    ) -> AnimeResponse:
+        """
+        Search by a 33-dimensional MPEG-7 ColorLayout vector (see https://github.com/soruly/trace.moe-id).
 
-        if anime.error:
-            kwargs = {
-                "url": url,
-                "text": anime.error,
-                "anime_response_object": anime,
-            }
-            if anime.error == "Invalid API key":
-                raise errors.InvalidAPIKey(**kwargs)
-            if anime.error == "Search quota depleted":
-                raise errors.SearchQuotaDepleted(**kwargs)
-            if anime.error == "Concurrency limit exceeded":
-                raise errors.ConcurrencyLimitExceeded(**kwargs)
-            if anime.error == "Error: Search queue is full":
-                raise errors.SearchQueueFull(**kwargs)
-            if anime.error == "Invalid image url":
-                raise errors.InvalidImageUrl(**kwargs)
-            if "Failed to fetch image" in anime.error:
-                raise errors.FailedFetchImage(**kwargs)
-            if anime.error == "Failed to process image":
-                raise errors.FailedProcessImage(**kwargs)
-            if anime.error == "OpenCV: Failed to detect and cut borders":
-                raise errors.FailedDetectAndCutBorders(**kwargs)
+        :param vector: Base64 hash string or a sequence of 33 numbers
+        :param anilist_id: Search only within this AniList ID
+        :param anilist_info: Include AniList info in results instead of a bare ID
+        :return: AnimeResponse object
+        """
+        params = self._search_params(anilist_id, anilist_info)
+        body = {"vector": vector if isinstance(vector, str) else list(vector)}
+        response, limit = await self.make_request("POST", self._url("search"), params=params, json=body)
+        return AnimeResponse.model_validate({**response, "limits": limit})
 
-            raise errors.TraceMoeAPIError(**kwargs)
+    async def search_vectors(
+        self,
+        vectors: Sequence[Vector],
+        *,
+        anilist_id: int | None = None,
+        anilist_info: bool = True,
+    ) -> AnimeBatchResponse:
+        """
+        Batch search by up to 10 ColorLayout vectors, each one costs 1 search credit.
 
-        return anime
+        :param vectors: Base64 hash strings or sequences of 33 numbers
+        :param anilist_id: Search only within this AniList ID
+        :param anilist_info: Include AniList info in results instead of a bare ID
+        :return: AnimeBatchResponse object with one result list per vector, in the same order
+        """
+        if isinstance(vectors, str) or not vectors:
+            raise ValueError("vectors must be a non-empty sequence of vectors")
 
-    async def _to_me_object(self, response_json: dict[str, Any], limit: RateLimit) -> BotMe:
-        """Convert response JSON to BotMe object."""
-        return BotMe(**response_json, limits=limit)
+        params = self._search_params(anilist_id, anilist_info)
+        body = {"vector": [vector if isinstance(vector, str) else list(vector) for vector in vectors]}
+        response, limit = await self.make_request("POST", self._url("search"), params=params, json=body)
+        return AnimeBatchResponse.model_validate({**response, "limits": limit})

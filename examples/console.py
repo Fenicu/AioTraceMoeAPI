@@ -1,67 +1,77 @@
 import asyncio
 import datetime as dt
+import sys
 
-from aiotracemoeapi import TraceMoe, exceptions, types
+from aiotracemoeapi import (
+    ConcurrencyLimitExceeded,
+    SearchQueueFull,
+    SearchQuotaDepleted,
+    TraceMoe,
+    TraceMoeAPIError,
+)
 
 
-async def main():
-    """
-    Demonstrate a simple search by URL using the aiotracemoeapi library.
-    """
-    # URL of the image to search
-    # Using a known anime screenshot
-    image_url = "https://s1.zerochan.net/Kurosaki.Ichigo.600.172225.jpg"
-    
-    print(f"Searching for image: {image_url}")
+def format_time(seconds: float) -> str:
+    return str(dt.timedelta(seconds=int(seconds)))
+
+
+async def main(source: str) -> None:
+    """Search for an anime scene by an image URL or a local file path."""
+    print(f"Searching for: {source}")
 
     try:
-        async with TraceMoe() as api:
-            # Perform the search
-            # is_url=True is required when passing a URL string
-            response = await api.search(image_url, is_url=True)
-            
-            print(f"Search completed. Found {len(response.result)} results.")
-
-            if response.result:
-                best = response.best_result
-                print("\n--- Best Match ---")
-                print(f"Similarity: {best.short_similarity()}")
-                
-                # The 'anilist' field can be an ID (int) or an AniList object depending on 'anilist_info' param (default True)
-                if isinstance(best.anilist, types.AniList):
-                    english_title = best.anilist.title.english
-                    romaji_title = best.anilist.title.romaji
-                    title = english_title or romaji_title or "Unknown Title"
-                    print(f"Title: {title}")
-                    print(f"Is Adult: {'Yes' if best.anilist.is_adult else 'No'}")
-                    print(f"MAL URL: {best.anilist.mal_url}")
-                else:
-                    print(f"AniList ID: {best.anilist}")
-                
-                # Episode can be a single value or a list
-                episode = best.episode
-                if isinstance(episode, list):
-                    episode = ", ".join(map(str, episode))
-                print(f"Episode: {episode}")
-                
-                # Time in the episode
-                start_time = dt.timedelta(seconds=int(best.anime_from))
-                end_time = dt.timedelta(seconds=int(best.anime_to))
-                print(f"Timestamp: {start_time} - {end_time}")
-                
-                print(f"Video Preview: {best.video}")
-                
-            else:
-                print("No matches found.")
-
-    except exceptions.SearchQueueFull:
-        print("Error: Search queue is full, please try again later.")
-    except exceptions.SearchQuotaDepleted:
-        print("Error: Monthly search limit reached.")
-    except exceptions.TraceMoeAPIError as e:
+        # Retry a few times if the server is busy or the concurrency limit is hit
+        async with TraceMoe(max_retries=3) as api:
+            response = await api.search(source)
+    except SearchQuotaDepleted as e:
+        print(f"Error: daily search quota depleted ({e.quota_used}/{e.quota}).")
+        return
+    except (ConcurrencyLimitExceeded, SearchQueueFull):
+        print("Error: the server is busy, please try again later.")
+        return
+    except TraceMoeAPIError as e:
         print(f"API Error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        return
+
+    print(f"Searched {response.frame_count} frames, quota used: {response.quota_used}/{response.quota}")
+
+    best = response.best_result
+    if best is None:
+        print("No matches found.")
+        return
+
+    print("\n--- Best Match ---")
+    print(f"Similarity: {best.short_similarity()}")
+    if best.similarity < 0.9:
+        print("(similarity below 90% is most likely an incorrect result)")
+
+    # AniList info is included by default (anilist_info=True)
+    if anilist := best.anilist_info:
+        title = anilist.title.english or anilist.title.romaji or anilist.title.native or "Unknown Title"
+        print(f"Title: {title}")
+        print(f"Is Adult: {'Yes' if anilist.is_adult else 'No'}")
+        print(f"AniList: {anilist.url}")
+        if anilist.mal_url:
+            print(f"MyAnimeList: {anilist.mal_url}")
+    else:
+        print(f"AniList ID: {best.anilist_id}")
+
+    if best.episode_start is not None:
+        episodes = str(best.episode_start)
+        if best.episode_end != best.episode_start:
+            episodes += f"-{best.episode_end}"
+        print(f"Episode: {episodes}")
+    elif best.episode is not None:
+        print(f"Episode (from filename): {best.episode}")
+
+    print(f"Scene: {format_time(best.anime_from)} - {format_time(best.anime_to)}")
+    if best.at is not None:
+        print(f"Best frame at: {format_time(best.at)}")
+
+    # Preview URLs expire in 5 minutes
+    print(f"Image Preview: {best.image_url(size='l')}")
+    print(f"Video Preview: {best.video_url(size='l', mute=True)}")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "https://images.plurk.com/32B15UXxymfSMwKGTObY5e.jpg"))
