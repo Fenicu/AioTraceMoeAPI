@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import Any
 
 import httpx
 
@@ -5,61 +8,72 @@ import httpx
 class TraceMoeAPIError(Exception):
     """Base exception for all TraceMoe API errors."""
 
-    url: str | None
-    text: str | None
-    _raw_response: httpx.Response | None
-
     def __init__(
         self,
         url: str | None = None,
         text: str | None = None,
         raw_response: httpx.Response | None = None,
+        status_code: int | None = None,
+        data: dict[str, Any] | None = None,
     ) -> None:
-        """Initialize the exception."""
+        """
+        Initialize the exception.
+
+        :param url: Requested URL
+        :param text: Error message returned by the API
+        :param raw_response: Raw HTTP response
+        :param status_code: HTTP status code
+        :param data: Parsed JSON body of the error response
+        """
         self.url = url
         self.text = text
-        self._raw_response = raw_response
+        self.raw_response = raw_response
+        self.status_code = status_code if status_code is not None else getattr(raw_response, "status_code", None)
+        self.data = data or {}
         super().__init__(text)
 
-
-class InvalidAPIKey(TraceMoeAPIError):
-    """Raised when the API key is invalid (403)."""
-
-
-class SearchQuotaDepleted(TraceMoeAPIError):
-    """Raised when the search quota is depleted (402)."""
+    def __str__(self) -> str:
+        if self.status_code is None:
+            return str(self.text)
+        return f"{self.text} (Status: {self.status_code})"
 
 
-class ConcurrencyLimitExceeded(TraceMoeAPIError):
-    """Raised when the concurrency limit is exceeded (402)."""
-
-
-class SearchQueueFull(TraceMoeAPIError):
-    """Raised when the search queue is full (503)."""
-
-
-class InvalidImageUrl(TraceMoeAPIError):
-    """Raised when the image URL is invalid (400)."""
-
-
-class FailedFetchImage(TraceMoeAPIError):
-    """Raised when the image cannot be fetched (400/500)."""
-
-
-class FailedProcessImage(TraceMoeAPIError):
-    """Raised when the image cannot be processed (400/500)."""
-
-
-class FailedDetectAndCutBorders(TraceMoeAPIError):
-    """Raised when border detection fails."""
+# --- Generic HTTP errors ---
 
 
 class BadRequest(TraceMoeAPIError):
     """Raised when the request is invalid (400)."""
 
 
+class PaymentRequired(TraceMoeAPIError):
+    """Raised when the search quota or concurrency limit is exceeded (402)."""
+
+
 class ForbiddenError(TraceMoeAPIError):
     """Raised when access is forbidden (403)."""
+
+
+class MethodNotAllowed(TraceMoeAPIError):
+    """Raised when the method is not allowed or no image was sent (405)."""
+
+
+class PayloadTooLarge(TraceMoeAPIError):
+    """Raised when the uploaded file is larger than 25MB (413)."""
+
+
+class TooManyRequests(TraceMoeAPIError):
+    """Raised when the HTTP rate limit is exceeded (429)."""
+
+    @property
+    def retry_after(self) -> float | None:
+        """Seconds to wait before retrying, taken from the ``Retry-After`` header."""
+        if self.raw_response is None:
+            return None
+        value = self.raw_response.headers.get("retry-after")
+        try:
+            return float(value) if value is not None else None
+        except ValueError:
+            return None
 
 
 class InternalServerError(TraceMoeAPIError):
@@ -71,24 +85,61 @@ class ServiceUnavailable(TraceMoeAPIError):
 
 
 class GatewayTimeout(TraceMoeAPIError):
-    """Raised when the gateway times out (504)."""
+    """Raised when the server is overloaded (504)."""
 
 
-class TooManyRequests(TraceMoeAPIError):
-    """Raised when the rate limit is exceeded (429)."""
+# --- Specific API errors ---
 
 
-class PayloadTooLarge(TraceMoeAPIError):
-    """Raised when the payload is too large (413)."""
+class InvalidAPIKey(ForbiddenError):
+    """Raised when the API key is invalid (403)."""
 
 
-class MethodNotAllowed(TraceMoeAPIError):
-    """Raised when the method is not allowed (405)."""
+class SearchQuotaDepleted(PaymentRequired):
+    """Raised when the 24-hour search quota is depleted (402)."""
+
+    @property
+    def quota(self) -> int | None:
+        """Max quota for the rolling 24-hour window."""
+        return self.data.get("quota")
+
+    @property
+    def quota_used(self) -> int | None:
+        """Quota used in the last 24 hours."""
+        return self.data.get("quotaUsed")
 
 
-ERRORS_STATUS_MAPPING = {
+class ConcurrencyLimitExceeded(PaymentRequired):
+    """Raised when too many parallel search requests are made (402)."""
+
+
+class SearchQueueFull(ServiceUnavailable):
+    """Raised when the search queue is full (503)."""
+
+
+class InvalidImageUrl(BadRequest):
+    """Raised when the image URL is invalid (400)."""
+
+
+class FailedFetchImage(TraceMoeAPIError):
+    """Raised when the server cannot fetch the image by URL (status mirrors the remote server)."""
+
+
+class FailedProcessImage(BadRequest):
+    """Raised when the image or file cannot be processed (400)."""
+
+
+class InvalidVector(BadRequest):
+    """Raised when the color layout vector has an invalid format (400)."""
+
+
+class TooManyVectors(BadRequest):
+    """Raised when more than 10 vectors are sent in one batch search (400)."""
+
+
+ERRORS_STATUS_MAPPING: dict[int, type[TraceMoeAPIError]] = {
     400: BadRequest,
-    402: SearchQuotaDepleted,
+    402: PaymentRequired,
     403: ForbiddenError,
     405: MethodNotAllowed,
     413: PayloadTooLarge,
@@ -97,3 +148,35 @@ ERRORS_STATUS_MAPPING = {
     503: ServiceUnavailable,
     504: GatewayTimeout,
 }
+
+# Error message prefix -> exception class. The server may append details to the message,
+# e.g. "Search quota depleted (quota per 24 hours: 100, used: 100)" or "Invalid image url <url>".
+ERRORS_MESSAGE_MAPPING: tuple[tuple[str, type[TraceMoeAPIError]], ...] = (
+    ("Invalid API key", InvalidAPIKey),
+    ("Search quota depleted", SearchQuotaDepleted),
+    ("Concurrency limit exceeded", ConcurrencyLimitExceeded),
+    ("Error: Search queue is full", SearchQueueFull),
+    ("Search queue is full", SearchQueueFull),
+    ("Invalid image url", InvalidImageUrl),
+    ("Failed to fetch image", FailedFetchImage),
+    ("Failed to process", FailedProcessImage),
+    ("Invalid vector format", InvalidVector),
+    ("Too many vectors", TooManyVectors),
+)
+
+# Errors that are worth retrying after a pause.
+RETRYABLE_ERRORS: tuple[type[TraceMoeAPIError], ...] = (
+    ConcurrencyLimitExceeded,
+    TooManyRequests,
+    ServiceUnavailable,
+    GatewayTimeout,
+)
+
+
+def get_error_class(status_code: int, message: str | None) -> type[TraceMoeAPIError]:
+    """Pick the most specific exception class for an error response."""
+    if message:
+        for prefix, error_cls in ERRORS_MESSAGE_MAPPING:
+            if message.startswith(prefix):
+                return error_cls
+    return ERRORS_STATUS_MAPPING.get(status_code, TraceMoeAPIError)

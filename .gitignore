@@ -1,7 +1,11 @@
 *egg-info
 *build
 *dist
-*tests
 .flake8
 .vscode
 __pycache__
+.venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage

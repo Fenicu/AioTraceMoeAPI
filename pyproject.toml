@@ -1,32 +1,69 @@
 [project]
 name = "aiotracemoeapi"
-version = "3.1.2"
+version = "4.0.0"
 description = "Async wrapper for Trace.moe API"
 readme = "README.md"
-requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Fenicu" }]
+requires-python = ">=3.10"
+keywords = ["trace.moe", "tracemoe", "anime", "search", "async", "asyncio", "httpx", "api", "wrapper"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: AsyncIO",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
-    "httpx",
-    "pydantic>=2.0",
+    "httpx>=0.27,<1",
+    "pydantic>=2.7,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Fenicu/AioTraceMoeAPI"
+Repository = "https://github.com/Fenicu/AioTraceMoeAPI"
+Issues = "https://github.com/Fenicu/AioTraceMoeAPI/issues"
+Changelog = "https://github.com/Fenicu/AioTraceMoeAPI/blob/master/CHANGELOG.md"
+"API Docs" = "https://soruly.github.io/trace.moe-api/"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.6",
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.21,<0.10.0"]
+requires = ["uv_build>=0.9.21,<0.13"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
 
 [tool.ruff]
 src = ["src"]
 line-length = 120
-target-version = "py313"
-exclude = [
-    ".git",
-    ".ruff_cache",
-    "__pypackages__",
-    "__pycache__",
-    "*.pyi",
-    "venv",
-    ".venv",
-    "app/db/migrations/versions",
-]
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -53,33 +90,11 @@ select = [
     "FA",     # flake8-future-annotations
 ]
 ignore = [
-    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
-    "D203", "D205", "D212", "D213", "D215", "D400", "D401", "D404",
-    "D405", "D406", "D407", "D408", "D409", "D410", "D411", "D413",
-    "D414", "D416", "D417",
-
-    "E402",
-
-    "ARG001", "ARG002",
-
-    "C901",     # complex-structure
-    "PLR0911",  # too-many-arguments
-    "PLR0912",  # too-many-branches
     "PLR0913",  # too-many-arguments
-    "PLR0915",  # too-many-statements
-    "PLR5501",  # collapsible-else-if
     "PLR2004",  # magic-value-comparison
-
-    "ANN002", "ANN003", "ANN401",
-    "B008",
-
-    "BLE001", # blind-except
-    "FBT001", "FBT002", # boolean-trap
-    "COM812", # trailing-comma-missing
-    "ISC001", # single-line-implicit-string-concatenation
-    "RUF001", "RUF002", "RUF003", # ambiguous unicode
-    "S101",   # assert
-    "TRY301", # abstract-raise
-    "UP006",  # non-pep585-annotation
-    "UP007",  # non-pep604-annotation
+    "ANN401",   # any-type
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106", "ANN", "PLR2004", "RUF001"]
+"examples/**" = ["T20", "ANN"]

@@ -1,13 +1,20 @@
-.PHONY lint:
+.PHONY: lint format typecheck test check outdated
+
 lint:
-	echo "Running ruff..."
-	uvx ruff check --config pyproject.toml --diff ./src
+	uv run ruff check .
+	uv run ruff format --check .
 
-.PHONY format:
 format:
-	echo "Running ruff check with --fix..."
-	uvx ruff check --config pyproject.toml --fix --unsafe-fixes ./src
+	uv run ruff check --fix .
+	uv run ruff format .
 
-.PHONY outdated:
+typecheck:
+	uv run mypy
+
+test:
+	uv run pytest
+
+check: lint typecheck test
+
 outdated:
 	uv tree --outdated --universal
