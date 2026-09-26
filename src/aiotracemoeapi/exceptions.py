@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -66,14 +68,23 @@ class TooManyRequests(TraceMoeAPIError):
 
     @property
     def retry_after(self) -> float | None:
-        """Seconds to wait before retrying, taken from the ``Retry-After`` header."""
+        """Seconds to wait before retrying, from the ``Retry-After`` header (seconds or HTTP date)."""
         if self.raw_response is None:
             return None
         value = self.raw_response.headers.get("retry-after")
-        try:
-            return float(value) if value is not None else None
-        except ValueError:
+        if value is None:
             return None
+        try:
+            return max(float(value), 0.0)
+        except ValueError:
+            pass
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max((retry_at - datetime.now(timezone.utc)).total_seconds(), 0.0)
 
 
 class InternalServerError(TraceMoeAPIError):
@@ -164,13 +175,13 @@ ERRORS_MESSAGE_MAPPING: tuple[tuple[str, type[TraceMoeAPIError]], ...] = (
     ("Too many vectors", TooManyVectors),
 )
 
-# Errors that are worth retrying after a pause.
-RETRYABLE_ERRORS: tuple[type[TraceMoeAPIError], ...] = (
-    ConcurrencyLimitExceeded,
-    TooManyRequests,
-    ServiceUnavailable,
-    GatewayTimeout,
-)
+# HTTP statuses that are worth retrying after a pause, whatever the error message is.
+RETRYABLE_STATUS_CODES = frozenset({429, 503, 504})
+
+
+def is_retryable(error: TraceMoeAPIError) -> bool:
+    """Whether the request may succeed if repeated after a pause."""
+    return isinstance(error, ConcurrencyLimitExceeded) or error.status_code in RETRYABLE_STATUS_CODES
 
 
 def get_error_class(status_code: int, message: str | None) -> type[TraceMoeAPIError]:

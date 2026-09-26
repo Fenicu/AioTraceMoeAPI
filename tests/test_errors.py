@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from typing import Any
 
 import pytest
@@ -185,3 +187,58 @@ async def test_too_many_requests_retry_after() -> None:
         await TraceMoe().me()
 
     assert exc_info.value.retry_after == 30.0
+
+
+@respx.mock
+async def test_retry_on_failed_fetch_with_503(search_response: dict[str, Any], sleeps: list[float]) -> None:
+    route = respx.get(f"{API}/search")
+    route.side_effect = [
+        respx.MockResponse(503, json={"error": "Failed to fetch image https://example.com/a.jpg"}),
+        respx.MockResponse(200, json=search_response),
+    ]
+
+    await TraceMoe(max_retries=1).search("https://example.com/a.jpg")
+
+    assert route.call_count == 2
+    assert len(sleeps) == 1
+
+
+@respx.mock
+async def test_no_retry_on_failed_fetch_with_404(sleeps: list[float]) -> None:
+    route = respx.get(f"{API}/search").respond(404, json={"error": "Failed to fetch image https://example.com/a.jpg"})
+
+    with pytest.raises(FailedFetchImage):
+        await TraceMoe(max_retries=2).search("https://example.com/a.jpg")
+
+    assert route.call_count == 1
+    assert sleeps == []
+
+
+@respx.mock
+async def test_retry_after_http_date() -> None:
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=120)
+    headers = {"retry-after": format_datetime(retry_at, usegmt=True)}
+    respx.get(f"{API}/me").respond(429, text="Too many requests", headers=headers)
+
+    with pytest.raises(TooManyRequests) as exc_info:
+        await TraceMoe().me()
+
+    retry_after = exc_info.value.retry_after
+    assert retry_after is not None
+    assert 100 < retry_after <= 120
+
+
+@respx.mock
+async def test_retry_after_in_the_past_and_invalid() -> None:
+    respx.get(f"{API}/me").side_effect = [
+        respx.MockResponse(429, headers={"retry-after": "Sat, 01 Jan 2000 00:00:00 GMT"}),
+        respx.MockResponse(429, headers={"retry-after": "soon"}),
+    ]
+
+    with pytest.raises(TooManyRequests) as exc_info:
+        await TraceMoe().me()
+    assert exc_info.value.retry_after == 0.0
+
+    with pytest.raises(TooManyRequests) as exc_info:
+        await TraceMoe().me()
+    assert exc_info.value.retry_after is None

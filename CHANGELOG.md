@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.1
+
+### Fixes
+
+- Retries now depend on the HTTP status: 429, 503 and 504 are retried whatever the error message is.
+  Before, `FailedFetchImage` with status 503 (the image host was temporarily down) was not retried.
+- `TooManyRequests.retry_after` understands the HTTP date form of `Retry-After`, not only seconds.
+- A nested `async with api:` no longer closes the HTTP client of the outer block.
+- A closed `httpx.AsyncClient` passed as `client=` now raises `RuntimeError`. Before, it was silently
+  replaced with a default client, losing your proxy, transport and TLS settings.
+
+### Examples
+
+- New examples: quota and usage report, searching a whole folder in parallel, vector search,
+  downloading previews and a Telegram bot on aiogram 3. See [examples/README.md](examples/README.md).
+- `console.py` is now a command-line tool with options for `cut_borders`, the AniList filter and the number of results.
+
 ## 4.0.0
 
 Brings the wrapper up to date with the current [trace.moe API](https://soruly.github.io/trace.moe-api/).

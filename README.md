@@ -148,11 +148,15 @@ async with httpx.AsyncClient(proxy="http://localhost:8080") as client:
 api = TraceMoe(base_url="https://trace.example.com")  # self-hosted trace.moe-api
 ```
 
-## Running Examples
+## Examples
+
+The [examples](examples/) folder has ready-to-run scripts: a command-line search, quota and usage report,
+searching a whole folder in parallel, vector search, downloading previews and a Telegram bot on aiogram 3.
 
 ```bash
 uv run examples/console.py https://images.plurk.com/32B15UXxymfSMwKGTObY5e.jpg
-uv run examples/console.py path/to/screenshot.jpg
+uv run examples/batch_folder.py ./screenshots results.csv
+BOT_TOKEN=123:abc uv run examples/telegram_bot.py
 ```
 
 ## Development
