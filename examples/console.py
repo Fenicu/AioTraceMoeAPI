@@ -1,77 +1,96 @@
+"""
+Search an anime scene from the command line.
+
+    uv run examples/console.py https://images.plurk.com/32B15UXxymfSMwKGTObY5e.jpg
+    uv run examples/console.py screenshot.jpg --cut-borders both
+    uv run examples/console.py screenshot.jpg --anilist-id 21034 --top 3
+
+Set the TRACE_MOE_KEY environment variable to use your API key.
+"""
+
+import argparse
 import asyncio
-import datetime as dt
-import sys
+import os
+from datetime import timedelta
 
 from aiotracemoeapi import (
+    AnimeSearch,
     ConcurrencyLimitExceeded,
+    CutBorders,
     SearchQueueFull,
     SearchQuotaDepleted,
     TraceMoe,
     TraceMoeAPIError,
 )
 
+CUT_BORDERS = {"none": CutBorders.NONE, "cut": CutBorders.CUT, "both": CutBorders.BOTH}
+
 
 def format_time(seconds: float) -> str:
-    return str(dt.timedelta(seconds=int(seconds)))
+    return str(timedelta(seconds=int(seconds)))
 
 
-async def main(source: str) -> None:
-    """Search for an anime scene by an image URL or a local file path."""
-    print(f"Searching for: {source}")
+def describe(result: AnimeSearch) -> str:
+    if anilist := result.anilist_info:
+        title = anilist.title.english or anilist.title.romaji or anilist.title.native or "Unknown title"
+    else:
+        title = f"AniList #{result.anilist_id}"
+
+    match (result.episode_start, result.episode_end):
+        case (None, _):
+            episode = f"episode {result.episode} (from filename)" if result.episode is not None else "unknown episode"
+        case (start, end) if start == end:
+            episode = f"episode {start}"
+        case (start, end):
+            episode = f"episodes {start}-{end}"
+
+    at = format_time(result.at if result.at is not None else result.anime_from)
+    return f"{result.short_similarity():>6}  {title}, {episode}, at {at}"
+
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description="Search an anime scene by screenshot")
+    parser.add_argument("source", help="image URL or path to a local image / video / gif")
+    parser.add_argument("--anilist-id", type=int, help="search only within this anime")
+    parser.add_argument("--cut-borders", choices=CUT_BORDERS, default="cut", help="black borders mode (default: cut)")
+    parser.add_argument("--top", type=int, default=1, help="how many results to show")
+    args = parser.parse_args()
 
     try:
-        # Retry a few times if the server is busy or the concurrency limit is hit
-        async with TraceMoe(max_retries=3) as api:
-            response = await api.search(source)
+        async with TraceMoe(token=os.getenv("TRACE_MOE_KEY"), max_retries=3) as api:
+            response = await api.search(
+                args.source,
+                anilist_id=args.anilist_id,
+                cut_borders=CUT_BORDERS[args.cut_borders],
+            )
+    except FileNotFoundError:
+        raise SystemExit(f"File not found: {args.source}") from None
     except SearchQuotaDepleted as e:
-        print(f"Error: daily search quota depleted ({e.quota_used}/{e.quota}).")
-        return
+        raise SystemExit(f"Daily search quota depleted ({e.quota_used}/{e.quota}), try again later") from None
     except (ConcurrencyLimitExceeded, SearchQueueFull):
-        print("Error: the server is busy, please try again later.")
-        return
+        raise SystemExit("trace.moe is busy right now, try again later") from None
     except TraceMoeAPIError as e:
-        print(f"API Error: {e}")
-        return
+        raise SystemExit(f"trace.moe error: {e}") from None
 
-    print(f"Searched {response.frame_count} frames, quota used: {response.quota_used}/{response.quota}")
+    print(f"Searched {response.frame_count:,} frames, quota used: {response.quota_used}/{response.quota}\n")
 
-    best = response.best_result
-    if best is None:
+    if not response.result:
         print("No matches found.")
         return
 
-    print("\n--- Best Match ---")
-    print(f"Similarity: {best.short_similarity()}")
-    if best.similarity < 0.9:
-        print("(similarity below 90% is most likely an incorrect result)")
+    for match in response.result[: args.top]:
+        print(describe(match))
 
-    # AniList info is included by default (anilist_info=True)
+    best = response.result[0]
+    if best.similarity < 0.9:
+        print("\nSimilarity below 90% is most likely a wrong result.")
     if anilist := best.anilist_info:
-        title = anilist.title.english or anilist.title.romaji or anilist.title.native or "Unknown Title"
-        print(f"Title: {title}")
-        print(f"Is Adult: {'Yes' if anilist.is_adult else 'No'}")
-        print(f"AniList: {anilist.url}")
+        print(f"\nAniList: {anilist.url}")
         if anilist.mal_url:
             print(f"MyAnimeList: {anilist.mal_url}")
-    else:
-        print(f"AniList ID: {best.anilist_id}")
-
-    if best.episode_start is not None:
-        episodes = str(best.episode_start)
-        if best.episode_end != best.episode_start:
-            episodes += f"-{best.episode_end}"
-        print(f"Episode: {episodes}")
-    elif best.episode is not None:
-        print(f"Episode (from filename): {best.episode}")
-
-    print(f"Scene: {format_time(best.anime_from)} - {format_time(best.anime_to)}")
-    if best.at is not None:
-        print(f"Best frame at: {format_time(best.at)}")
-
     # Preview URLs expire in 5 minutes
-    print(f"Image Preview: {best.image_url(size='l')}")
-    print(f"Video Preview: {best.video_url(size='l', mute=True)}")
+    print(f"Preview: {best.video_url(size='l', mute=True)}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "https://images.plurk.com/32B15UXxymfSMwKGTObY5e.jpg"))
+    asyncio.run(main())

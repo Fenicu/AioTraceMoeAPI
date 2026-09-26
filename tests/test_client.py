@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import pytest
 import respx
 
 import aiotracemoeapi
@@ -119,3 +120,28 @@ def test_rate_limit_from_standard_headers() -> None:
 
 def test_rate_limit_missing_headers() -> None:
     assert RateLimit.from_headers(httpx.Headers()) == RateLimit(limit=0, remaining=0, reset=0)
+
+
+async def test_nested_context_manager_keeps_client_open() -> None:
+    api = TraceMoe()
+    async with api:
+        session = api._session
+        async with api:
+            assert api._session is session
+        assert session is not None
+        assert not session.is_closed
+        assert api._session is session
+    assert session.is_closed
+
+
+async def test_closed_external_client_is_an_error() -> None:
+    client = httpx.AsyncClient()
+    await client.aclose()
+    api = TraceMoe(client=client)
+
+    with pytest.raises(RuntimeError, match="closed"):
+        async with api:
+            pass
+
+    with pytest.raises(RuntimeError, match="closed"):
+        await api.me()

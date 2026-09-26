@@ -57,11 +57,18 @@ class TraceMoe:
         self.retry_delay = retry_delay
         self._session: httpx.AsyncClient | None = client
         self._owns_session = client is None
+        self._context_depth = 0
+
+    def _check_external_client(self) -> None:
+        if not self._owns_session and self._session is not None and self._session.is_closed:
+            raise RuntimeError("The httpx.AsyncClient passed as `client` is closed")
 
     async def __aenter__(self) -> TraceMoe:
+        self._check_external_client()
         if self._session is None or self._session.is_closed:
             self._session = httpx.AsyncClient(timeout=self.timeout)
             self._owns_session = True
+        self._context_depth += 1
         return self
 
     async def __aexit__(
@@ -70,7 +77,9 @@ class TraceMoe:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        await self.close()
+        self._context_depth = max(self._context_depth - 1, 0)
+        if self._context_depth == 0:
+            await self.close()
 
     async def close(self) -> None:
         """Close the client session if it was created by this wrapper."""
@@ -107,6 +116,7 @@ class TraceMoe:
         )
 
     async def _send(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        self._check_external_client()
         if self._session is not None and not self._session.is_closed:
             return await self._session.request(method, url, headers=self.headers, **kwargs)
 
@@ -137,8 +147,8 @@ class TraceMoe:
             response = await self._send(method, url, params=params, files=files, json=json)
             try:
                 return self._process_response(response, url)
-            except errors.RETRYABLE_ERRORS as exc:
-                if attempt >= self.max_retries:
+            except errors.TraceMoeAPIError as exc:
+                if attempt >= self.max_retries or not errors.is_retryable(exc):
                     raise
                 delay = self.retry_delay * 2**attempt
                 if isinstance(exc, errors.TooManyRequests) and exc.retry_after is not None:
